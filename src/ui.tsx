@@ -50,7 +50,9 @@ export function CarArt({ car, small = false }: { car: Car; small?: boolean }) {
 export function EntryRow({ state, entry, onClick }: { state: State; entry: Entry; onClick: () => void }) {
   const e = classifiedEntry(state, entry);
   const positive = ['capital_in', 'sale_payment', 'own_deposit', 'personal_deposit', 'expense_reversal'].includes(e.kind);
-  const neutral = ['transfer', 'to_personal', 'to_business'].includes(e.kind);
+  const ownExpense = e.kind === 'expense' && e.funding === 'personal';
+  const ownReversal = e.kind === 'expense_reversal' && state.entries.find(original => original.id === e.originalId)?.funding === 'personal';
+  const neutral = ['transfer', 'to_personal', 'to_business'].includes(e.kind) || ownExpense || ownReversal;
   const reversed = isReversed(state, e.id);
   const unknown = e.kind === 'expense' && e.scope === 'unknown';
   const car = state.cars.find(c => c.id === e.carId);
@@ -59,6 +61,6 @@ export function EntryRow({ state, entry, onClick }: { state: State; entry: Entry
   return <button className={`entry-row ${reversed ? 'reversed' : ''}`} onClick={onClick}>
     <span className={`entry-icon ${unknown ? 'amber' : positive ? 'green' : ''}`}><Icon size={18} /></span>
     <span className="entry-copy"><b>{e.label}</b><span>{car?.nickname ?? (e.scope === 'business' ? 'Общие расходы' : e.kind === 'personal_spend' ? 'Личная часть кошелька' : account?.name)}{car && account && ` · ${account.name}`}</span></span>
-    <span className="entry-end"><b className={positive ? 'positive' : ''}>{neutral ? '' : positive ? '+' : '−'}{money(e.amount)}</b>{unknown ? <span className="mini-label amber">Уточнить</span> : reversed ? <span className="mini-label">Отменена</span> : e.kind === 'expense_reversal' ? <span className="mini-label">Исправление</span> : null}</span>
+    <span className="entry-end"><b className={positive && !neutral ? 'positive' : ''}>{neutral ? '' : positive ? '+' : '−'}{money(e.amount)}</b>{reversed ? <span className="mini-label">Отменена</span> : unknown ? <span className="mini-label amber">Уточнить</span> : ownExpense ? <span className="mini-label">Своими · {e.personalUse === 'invest' ? 'в деле' : 'вернуть'}</span> : e.kind === 'expense_reversal' ? <span className="mini-label">Исправление</span> : null}</span>
   </button>;
 }

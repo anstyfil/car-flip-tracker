@@ -1,15 +1,17 @@
 export const DEMO_DAY = '2026-11-03';
 export const STORAGE_KEY = 'autocapital.demo.v1';
 export type Scope = 'car' | 'business' | 'unknown';
-export type EntryKind = 'expense' | 'expense_reversal' | 'capital_in' | 'capital_out' | 'sale_payment' | 'purchase_payment' | 'transfer' | 'owner_withdrawal' | 'own_deposit' | 'personal_spend' | 'personal_deposit' | 'to_personal' | 'to_business' | 'reward_payment';
+export type EntryKind = 'expense' | 'expense_reversal' | 'capital_in' | 'capital_out' | 'sale_payment' | 'purchase_payment' | 'transfer' | 'owner_withdrawal' | 'own_deposit' | 'personal_spend' | 'personal_deposit' | 'to_personal' | 'to_business' | 'reward_payment' | 'owner_repayment';
+export type ExpenseFunding = 'business' | 'personal';
+export type PersonalUse = 'reimburse' | 'invest';
 export type Account = { id: string; name: string; hint: string; kind: 'cash' | 'bank'; opening: number; personalOpening: number };
 export type Person = { id: string; name: string; initials: string; role: 'investor' | 'helper'; capitalOpening: number; color: string };
 export type Sale = { price: number; date: string; buyer: string };
 export type Car = { id: string; name: string; nickname: string; year: number; plate: string; color: string; date: string; purchase: number; purchasePaidOpening: number; importedCosts: number; asking: number; stage: 'Подготовка' | 'В продаже'; investorId?: string; sale?: Sale };
-export type Entry = { id: string; kind: EntryKind; amount: number; accountId: string; date: string; label: string; category?: string; scope?: Scope; carId?: string; personId?: string; targetAccountId?: string; originalId?: string };
+export type Entry = { id: string; kind: EntryKind; amount: number; accountId: string; date: string; label: string; category?: string; scope?: Scope; carId?: string; personId?: string; targetAccountId?: string; originalId?: string; funding?: ExpenseFunding; personalUse?: PersonalUse };
 export type Classification = { entryId: string; scope: Scope; carId?: string; category: string; at: string };
-export type Draft = { id: string; text: string; amount: string; carId: string; accountId: string; category: string; scope: Scope; date: string };
-export type Reconciliation = { id: string; accountId: string; actual: number; personal: number; expected: number; expectedPersonal: number; at: string };
+export type Draft = { id: string; text: string; amount: string; carId: string; accountId: string; category: string; scope: Scope; date: string; funding?: ExpenseFunding; personalUse?: PersonalUse };
+export type Reconciliation = { id: string; accountId: string; actual: number; personal: number; expected: number; expectedPersonal: number; at: string; basis?: 'business' };
 export type Allocation = { id: string; carId: string; profit: number; ownerRate: number; helperMode: 'fixed' | 'percent'; helperValue: number; helperSplit: number; investorId: string; helperIds: [string, string]; investor: number; ownerGross: number; helpers: [number, number]; ownerNet: number; at: string };
 export type State = { version: 1; accounts: Account[]; people: Person[]; cars: Car[]; entries: Entry[]; classifications: Classification[]; allocations: Allocation[]; reconciliations: Reconciliation[]; drafts: Draft[] };
 
@@ -48,6 +50,9 @@ export function accountBalance(state: State, id: string) {
   for (const e of state.entries) {
     if (e.kind === 'transfer' && e.targetAccountId === id) total += e.amount;
     if (e.accountId !== id) continue;
+    // Personal payment is outside the tracked business money, even on the same card.
+    if (e.kind === 'expense' && e.funding === 'personal') continue;
+    if (e.kind === 'expense_reversal' && state.entries.find(original => original.id === e.originalId)?.funding === 'personal') continue;
     if (e.kind === 'to_personal') { personal += e.amount; continue; }
     if (e.kind === 'to_business') { personal -= e.amount; continue; }
     if (['capital_in', 'sale_payment', 'own_deposit', 'personal_deposit', 'expense_reversal'].includes(e.kind)) total += e.amount;
@@ -78,12 +83,37 @@ export function rewardDue(state: State, personId: string) {
   const accrued = state.allocations.reduce((sum, a) => sum + (a.investorId === personId ? a.investor : 0) + a.helperIds.reduce((subtotal, id, index) => subtotal + (id === personId ? a.helpers[index] : 0), 0), 0);
   return accrued - state.entries.filter(e => e.kind === 'reward_payment' && e.personId === personId).reduce((sum, e) => sum + e.amount, 0);
 }
+export function personalExpenseDue(state: State, expenseId: string): number {
+  const expense = state.entries.find(e => e.id === expenseId);
+  if (expense?.kind !== 'expense' || expense.funding !== 'personal' || isReversed(state, expenseId)) return 0;
+  return expense.amount - state.entries.filter(e => e.kind === 'owner_repayment' && e.originalId === expenseId).reduce((sum, e) => sum + e.amount, 0);
+}
+export function personalExpenseTotals(state: State) {
+  return state.entries.reduce((sum, entry) => {
+    if (entry.kind === 'expense' && entry.funding === 'personal' && !isReversed(state, entry.id)) {
+      const due = personalExpenseDue(state, entry.id);
+      if (entry.personalUse === 'reimburse') sum.reimburse += due;
+      if (entry.personalUse === 'invest') sum.invest += due;
+    }
+    return sum;
+  }, { reimburse: 0, invest: 0 });
+}
 export function appendEntry(state: State, entry: Entry): State {
   if (state.entries.some(e => e.id === entry.id)) return state;
   validMoney(entry.amount);
   const account = state.accounts.find(a => a.id === entry.accountId);
   if (!account) throw new Error('Выберите счёт.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) throw new Error('Укажите дату.');
+  if (entry.kind === 'expense') {
+    if (entry.funding !== undefined && !['business', 'personal'].includes(entry.funding)) throw new Error('Выберите, чьи деньги использовали.');
+    if (entry.funding === 'personal' && !['reimburse', 'invest'].includes(entry.personalUse ?? '')) throw new Error('Выберите «Вернуть мне» или «Оставить в деле».');
+    if (entry.funding !== 'personal' && entry.personalUse !== undefined) throw new Error('Этот выбор доступен только при оплате своими деньгами.');
+  }
+  if (entry.kind === 'owner_repayment') {
+    const expense = state.entries.find(e => e.id === entry.originalId);
+    if (expense?.kind !== 'expense' || expense.funding !== 'personal' || isReversed(state, expense.id)) throw new Error('Выберите действующий расход, оплаченный своими деньгами.');
+    if (entry.amount > personalExpenseDue(state, expense.id)) throw new Error('Сумма больше остатка ваших денег по этому расходу.');
+  }
   if (entry.kind === 'transfer') {
     if (entry.accountId === entry.targetAccountId || !state.accounts.some(a => a.id === entry.targetAccountId)) throw new Error('Выберите другой счёт для перевода.');
     if (accountBalance(state, entry.accountId).business < entry.amount) throw new Error('Для этого перевода недостаточно учтённых рабочих денег. Сначала проверьте остаток.');
@@ -104,6 +134,7 @@ export function appendEntry(state: State, entry: Entry): State {
   if (entry.kind === 'expense_reversal') {
     const original = state.entries.find(e => e.id === entry.originalId);
     if (!original || original.kind !== 'expense' || isReversed(state, original.id) || original.amount !== entry.amount || original.accountId !== entry.accountId) throw new Error('Эту запись уже исправили или её нельзя отменить.');
+    if (state.entries.some(e => e.kind === 'owner_repayment' && e.originalId === original.id)) throw new Error('По этому расходу уже возвращали свои деньги. Его исправление требует связанной корректировки; она пока не реализована.');
   }
   return { ...state, entries: [...state.entries, entry] };
 }
@@ -148,9 +179,9 @@ export function createSeed(): State {
   return {
     version: 1,
     accounts: [
-      { id: 'pocket', name: 'Наличные с собой', hint: 'Общий кошелёк · есть личная часть', kind: 'cash', opening: 25300000, personalOpening: 2500000 },
-      { id: 'home', name: 'Наличные дома', hint: 'Отдельная рабочая касса', kind: 'cash', opening: 12000000, personalOpening: 0 },
-      { id: 'bank', name: 'Рабочая карта', hint: 'Без личных средств', kind: 'bank', opening: 5280000, personalOpening: 0 }
+      { id: 'pocket', name: 'Наличные с собой', hint: 'Учитываем только деньги на машины', kind: 'cash', opening: 25300000, personalOpening: 2500000 },
+      { id: 'home', name: 'Наличные дома', hint: 'Деньги на машины, которые хранятся дома', kind: 'cash', opening: 12000000, personalOpening: 0 },
+      { id: 'bank', name: 'Карта', hint: 'Учитываем деньги на машины, а не весь баланс карты', kind: 'bank', opening: 5280000, personalOpening: 0 }
     ],
     people: [
       { id: 'alex', name: 'Александр', initials: 'АЛ', role: 'investor', capitalOpening: 90000000, color: 'sage' },

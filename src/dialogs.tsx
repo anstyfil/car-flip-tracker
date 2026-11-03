@@ -2,15 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDownLeft, ArrowRight, ArrowUpRight, CarFront, Check, CheckCheck, ChevronRight, Clock3, Coins, MessageCircle, Plus, RotateCcw, Send, ShieldCheck, Users } from 'lucide-react';
 import { useApp } from './app-context';
 import type { Dialog } from './app-context';
-import { accountBalance, amountFromInput, appendEntry, businessCash, buyerDue, buyerPaid, calculateAllocation, capitalDue, carCost, carProfit, classifiedEntry, classifyExpense, confirmAllocation, createSeed, DEMO_DAY, isReversed, money, percentFromInput, registerSale, rewardDue, sellerDue, sellerPaid } from './domain';
-import type { Car, EntryKind, Scope } from './domain';
+import { accountBalance, amountFromInput, appendEntry, businessCash, buyerDue, buyerPaid, calculateAllocation, capitalDue, carCost, carProfit, classifiedEntry, classifyExpense, confirmAllocation, createSeed, DEMO_DAY, isReversed, money, percentFromInput, personalExpenseDue, registerSale, rewardDue, sellerDue, sellerPaid } from './domain';
+import type { Car, EntryKind, ExpenseFunding, PersonalUse, Scope } from './domain';
 import { CarArt, categories, EntryRow, ErrorMessage, Field, Modal, Notice, StatLine } from './ui';
 
 const uid = () => crypto.randomUUID();
 const messageOf = (e: unknown) => e instanceof Error ? e.message : 'Проверьте данные.';
-function AccountSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function AccountSelect({ value, onChange, showBalance = true }: { value: string; onChange: (value: string) => void; showBalance?: boolean }) {
   const { state } = useApp();
-  return <select value={value} onChange={e => onChange(e.target.value)}>{state.accounts.map(a => <option value={a.id} key={a.id}>{a.name} · рабочих {money(accountBalance(state, a.id).business)}</option>)}</select>;
+  return <select value={value} onChange={e => onChange(e.target.value)}>{state.accounts.map(a => <option value={a.id} key={a.id}>{a.name}{showBalance ? ` · на машины ${money(accountBalance(state, a.id).business)}` : ''}</option>)}</select>;
 }
 export default function Dialogs({ dialog }: { dialog: Dialog }) {
   const { state, open, close, commit } = useApp();
@@ -26,10 +26,11 @@ export default function Dialogs({ dialog }: { dialog: Dialog }) {
     case 'person-add': return <PersonForm />;
     case 'reconcile': return <ReconcileForm id={dialog.id} />;
     case 'entry': return <EntryDetail id={dialog.id} />;
+    case 'owner-return': return <OwnerReturnForm expenseId={dialog.expenseId} />;
     case 'bot': return <BotForm />;
     case 'drafts': return <Modal title="Черновики" subtitle="Ещё не влияют на деньги" onClose={close}>{state.drafts.length ? state.drafts.map(d => <button className="draft-item" key={d.id} onClick={() => open({ type: 'expense', draftId: d.id })}><Clock3 size={20} /><div><b>{d.text || 'Незавершённый расход'}</b><span>{d.amount ? `${d.amount} ₽` : 'Сумма не указана'} · продолжить запись</span></div><ChevronRight size={18} /></button>) : <div className="empty">Черновиков пока нет.</div>}</Modal>;
     case 'reset': return <Modal title="Начать демо заново?" subtitle="Вернутся исходные учебные машины, деньги и операции." onClose={close}><Notice tone="amber">Изменения и черновики этого локального прототипа будут заменены учебным примером. Реальных данных и Telegram-бота здесь нет.</Notice><div className="form-actions"><button className="button secondary" onClick={close}>Оставить как есть</button><button className="button primary" onClick={() => { if (commit(() => createSeed(), 'Учебный пример восстановлен')) close(); }}><RotateCcw size={17} />Начать заново</button></div></Modal>;
-    case 'help': return <Modal title="Знакомство с АвтоКапиталом" subtitle="Первый локальный прототип · версия 0.1" onClose={close}><div className="help-intro"><span className="bot-icon"><CarFront size={30} /></span><h3>Проверьте, удобно ли записывать.</h3><p>Все суммы и люди здесь вымышленные. Изменения сохраняются только в этом браузере на этом устройстве.</p></div><div className="help-steps"><div><span>01</span><p><b>Запишите расход</b>Попробуйте обычный расход или оставьте его черновиком.</p></div><div><span>02</span><p><b>Откройте Рио</b>Продажа уже записана. Можно получить доплату и распределить результат.</p></div><div><span>03</span><p><b>Сверьте наличность</b>Укажите факт и личную часть. Приложение покажет разницу.</p></div></div><Notice>Telegram, серверная база, доступы и резервное копирование пока не подключены. Прототип не предназначен для реального финансового учёта. Очистка данных браузера удалит сохранённое демо.</Notice><button className="button primary full" onClick={close}>Начать знакомство<ArrowRight size={17} /></button></Modal>;
+    case 'help': return <Modal title="Знакомство с АвтоКапиталом" subtitle="Первый локальный прототип · версия 0.1" onClose={close}><div className="help-intro"><span className="bot-icon"><CarFront size={30} /></span><h3>Проверьте, удобно ли записывать.</h3><p>Все суммы и люди здесь вымышленные. Изменения сохраняются только в этом браузере на этом устройстве.</p></div><div className="help-steps"><div><span>01</span><p><b>Запишите расход</b>Попробуйте обычный расход или оставьте его черновиком.</p></div><div><span>02</span><p><b>Откройте Рио</b>Продажа уже записана. Можно получить доплату и распределить результат.</p></div><div><span>03</span><p><b>Сверьте наличность</b>Укажите фактические деньги на машины. Приложение покажет разницу.</p></div></div><Notice>Telegram, серверная база, доступы и резервное копирование пока не подключены. Прототип не предназначен для реального финансового учёта. Очистка данных браузера удалит сохранённое демо.</Notice><button className="button primary full" onClick={close}>Начать знакомство<ArrowRight size={17} /></button></Modal>;
   }
 }
 
@@ -45,36 +46,43 @@ function ExpenseForm({ route }: { route: Extract<Dialog, { type: 'expense' }> })
   const [category, setCategory] = useState(original?.category && categories.includes(original.category) ? original.category : draft?.category ?? 'Запчасти');
   const [text, setText] = useState(original?.label ?? draft?.text ?? route.text ?? '');
   const [date, setDate] = useState(original?.date ?? draft?.date ?? DEMO_DAY);
+  const [funding, setFunding] = useState<ExpenseFunding>(original?.funding ?? draft?.funding ?? 'business');
+  const [personalUse, setPersonalUse] = useState<PersonalUse | ''>(original?.personalUse ?? draft?.personalUse ?? '');
   const [error, setError] = useState('');
   useEffect(() => {
     if (original || (!amount.trim() && !text.trim())) return;
     const timeout = setTimeout(() => {
-      commit(s => ({ ...s, drafts: [...s.drafts.filter(d => d.id !== draftId.current), { id: draftId.current, amount, text, carId, accountId, category, scope, date }] }), '');
+      commit(s => ({ ...s, drafts: [...s.drafts.filter(d => d.id !== draftId.current), { id: draftId.current, amount, text, carId, accountId, category, scope, date, funding, personalUse: funding === 'personal' && personalUse ? personalUse : undefined }] }), '');
     }, 400);
     return () => clearTimeout(timeout);
-  }, [amount, text, carId, accountId, category, scope, date]);
+  }, [amount, text, carId, accountId, category, scope, date, funding, personalUse]);
   const save = (e: React.FormEvent) => {
     e.preventDefault(); setError('');
     try {
       if (scope === 'car' && !carId) throw new Error('Выберите автомобиль или оставьте назначение для уточнения.');
       const value = amountFromInput(amount);
       const success = commit(s => {
-        const next = original ? classifyExpense(s, original.id, scope, carId, category) : appendEntry(s, { id: commandId.current, kind: 'expense', amount: value, accountId, date, label: text.trim() || (scope === 'unknown' ? 'Выплата — уточнить назначение' : category), category, scope, carId: scope === 'car' ? carId : undefined });
+        const next = original ? classifyExpense(s, original.id, scope, carId, category) : appendEntry(s, { id: commandId.current, kind: 'expense', amount: value, accountId, date, label: text.trim() || (scope === 'unknown' ? 'Выплата — уточнить назначение' : category), category, scope, carId: scope === 'car' ? carId : undefined, funding, personalUse: funding === 'personal' && personalUse ? personalUse : undefined });
         return { ...next, drafts: next.drafts.filter(d => d.id !== draftId.current) };
       }, original ? 'Назначение уточнено. Повторного списания нет.' : `Расход ${money(value)} записан`);
       if (success) close();
     } catch (e) { setError(messageOf(e)); }
   };
-  const saveDraft = () => { const id = draftId.current; if (commit(s => ({ ...s, drafts: [...s.drafts.filter(d => d.id !== id), { id, amount, text, carId, accountId, category, scope, date }] }), 'Черновик сохранён. Деньги пока не изменились.')) close(); };
-  let negative = false; try { negative = !original && !!amount && amountFromInput(amount) > accountBalance(state, accountId).business; } catch { /* incomplete input */ }
-  return <Modal title={original ? 'Уточнить назначение' : 'Записать расход'} subtitle={original ? 'Деньги уже списаны. Уточняем только смысл записи.' : 'Можно записать сейчас, а детали уточнить позже.'} onClose={() => { if (!original && (amount.trim() || text.trim())) saveDraft(); else close(); }}><form onSubmit={save}>
+  const saveDraft = () => { const id = draftId.current; if (commit(s => ({ ...s, drafts: [...s.drafts.filter(d => d.id !== id), { id, amount, text, carId, accountId, category, scope, date, funding, personalUse: funding === 'personal' && personalUse ? personalUse : undefined }] }), 'Черновик сохранён. Деньги пока не изменились.')) close(); };
+  let negative = false; try { negative = !original && funding === 'business' && !!amount && amountFromInput(amount) > accountBalance(state, accountId).business; } catch { /* incomplete input */ }
+  return <Modal title={original ? 'Уточнить назначение' : 'Записать расход'} subtitle={original ? 'Оплата уже записана. Уточняем только назначение.' : 'Можно записать сейчас, а детали уточнить позже.'} onClose={() => { if (!original && (amount.trim() || text.trim())) saveDraft(); else close(); }}><form onSubmit={save}>
     <Field label="Сумма, ₽"><input className="amount-input" inputMode="decimal" placeholder="0" value={amount} onChange={e => setAmount(e.target.value)} required readOnly={!!original} /></Field>
     <Field label="На что потратили?"><select value={scope} onChange={e => setScope(e.target.value as Scope)}><option value="unknown">Уточнить позже</option><option value="car">На автомобиль</option><option value="business">На общие нужды бизнеса</option></select></Field>
     {scope === 'car' && <Field label="Автомобиль"><select value={carId} onChange={e => setCarId(e.target.value)} required><option value="">Выберите машину</option>{state.cars.map(c => <option key={c.id} value={c.id}>{c.nickname} · {c.year}{c.sale ? ' · продан' : ''}</option>)}</select></Field>}
     {scope !== 'unknown' && <Field label="Категория"><select value={category} onChange={e => setCategory(e.target.value)}>{categories.map(c => <option key={c}>{c}</option>)}</select></Field>}
-    {!original && <Field label="Откуда заплатили"><AccountSelect value={accountId} onChange={setAccountId} /></Field>}
+    {!original && <>
+      <Field label="Чьи деньги использовал"><select value={funding} onChange={e => { setFunding(e.target.value as ExpenseFunding); setPersonalUse(''); }}><option value="business">Из денег на машины</option><option value="personal">Добавил свои личные</option></select></Field>
+      <Field label={funding === 'personal' ? 'Чем заплатил' : 'Откуда заплатили'}><AccountSelect value={accountId} onChange={setAccountId} showBalance={funding !== 'personal'} /></Field>
+      {funding === 'personal' && <Field label="Что сделать с этой суммой" hint="Выбирай для каждого расхода. Процент от прибыли не меняется."><select value={personalUse} onChange={e => setPersonalUse(e.target.value as PersonalUse | '')} required><option value="" disabled>Выбери вариант</option><option value="reimburse">Вернуть мне</option><option value="invest">Оставить в деле</option></select></Field>}
+    </>}
     <div className="two-fields"><Field label="Дата"><input type="date" value={date} onChange={e => setDate(e.target.value)} required disabled={!!original} /></Field><Field label="Комментарий · необязательно"><input value={text} onChange={e => setText(e.target.value)} placeholder="Например, колодки" readOnly={!!original} /></Field></div>
-    {scope === 'unknown' && <Notice tone="amber">Подтверждённая выплата уменьшит деньги. В себестоимость машины она попадёт после уточнения.</Notice>}
+    {funding === 'personal' && <Notice>Расход оплачен своими: деньги на машины не уменьшатся. {personalUse === 'invest' ? 'Сумма сохранится как своё вложение в дело.' : personalUse === 'reimburse' ? 'Сумма попадёт в «Вернуть мне».' : 'Укажи, вернуть эту сумму или оставить в деле.'} Полный личный баланс не учитываем.</Notice>}
+    {scope === 'unknown' && <Notice tone="amber">{funding === 'personal' ? 'Личная оплата сохранится отдельно.' : 'Подтверждённая выплата уменьшит деньги на машины.'} В себестоимость машины она попадёт после уточнения.</Notice>}
     {negative && <Notice tone="amber">Выплата больше учтённой рабочей части. Если она действительно произошла, её можно сохранить; затем потребуется разобраться с источником денег.</Notice>}
     <ErrorMessage error={error} /><div className="form-actions">{!original && <button type="button" className="button secondary" onClick={saveDraft}><Clock3 size={16} />Черновик</button>}<button type="submit" className="button primary"><Check size={17} />{original ? 'Сохранить назначение' : 'Записать расход'}</button></div>
   </form></Modal>;
@@ -131,12 +139,12 @@ function AllocationForm({ id }: { id: string }) {
 }
 
 const moneyLabels: Partial<Record<EntryKind, [string, string]>> = {
-  capital_in: ['Получить капитал', 'Поступление увеличивает основной долг, а не прибыль.'], capital_out: ['Вернуть капитал', 'Возврат основного долга не уменьшает прибыль машины.'], reward_payment: ['Выплатить вознаграждение', 'Записываем фактическую выплату ранее начисленной суммы.'], transfer: ['Перевести между счетами', 'Место хранения меняется, общий рабочий остаток сохраняется.'], owner_withdrawal: ['Забрал на личное', 'Деньги физически уходят из этой учитываемой кассы.'], own_deposit: ['Внёс свои в оборот', 'Рабочая касса увеличится. Это не заработанная прибыль.'], personal_spend: ['Потратил личную часть', 'Уменьшатся все купюры и личная часть, рабочие деньги останутся прежними.'], to_personal: ['Отложил на личное здесь же', 'Купюры остаются в кошельке, рабочая часть уменьшается.'], to_business: ['Вернул личную часть в оборот', 'Купюры остаются в кошельке, рабочая часть увеличивается.'], personal_deposit: ['Добавил личные деньги в кошелёк', 'Увеличится личная часть, в оборот эти деньги не входят.'], purchase_payment: ['Доплатить продавцу', 'Погашение долга, стоимость автомобиля второй раз не увеличивается.']
+  capital_in: ['Получить капитал', 'Поступление увеличивает основной долг, а не прибыль.'], capital_out: ['Вернуть капитал', 'Возврат основного долга не уменьшает прибыль машины.'], reward_payment: ['Выплатить вознаграждение', 'Записываем фактическую выплату ранее начисленной суммы.'], transfer: ['Перевести между счетами', 'Место хранения меняется, общий рабочий остаток сохраняется.'], owner_withdrawal: ['Забрал на личное', 'Деньги на машины уменьшатся. Для возврата оплаченного своими расхода используй «Вернуть себе» в той записи.'], own_deposit: ['Внёс свои в оборот', 'Рабочая касса увеличится. Это не заработанная прибыль.'], personal_spend: ['Потратил личную часть', 'Уменьшатся все купюры и личная часть, рабочие деньги останутся прежними.'], to_personal: ['Отложил на личное здесь же', 'Купюры остаются в кошельке, рабочая часть уменьшается.'], to_business: ['Вернул личную часть в оборот', 'Купюры остаются в кошельке, рабочая часть увеличивается.'], personal_deposit: ['Добавил личные деньги в кошелёк', 'Увеличится личная часть, в оборот эти деньги не входят.'], purchase_payment: ['Доплатить продавцу', 'Погашение долга, стоимость автомобиля второй раз не увеличивается.']
 };
 function MoneyForm({ route }: { route: Extract<Dialog, { type: 'money' }> }) {
   const { state, commit, close } = useApp(); const commandId = useRef(uid());
   const [kind, setKind] = useState<EntryKind>(route.kind), [amount, setAmount] = useState(''), [account, setAccount] = useState(route.accountId ?? 'pocket'), [target, setTarget] = useState('home'), [personId, setPerson] = useState(route.personId ?? state.people.find(p => p.role === 'investor')?.id ?? ''), [error, setError] = useState('');
-  const personal = ['owner_withdrawal', 'own_deposit', 'personal_spend', 'personal_deposit', 'to_personal', 'to_business'].includes(kind);
+  const personal = route.kind !== 'owner_withdrawal' && ['owner_withdrawal', 'own_deposit', 'personal_spend', 'personal_deposit', 'to_personal', 'to_business'].includes(kind);
   const personNeeded = ['capital_in', 'capital_out', 'reward_payment'].includes(kind);
   const [title, subtitle] = moneyLabels[kind]!;
   return <Modal title={personal ? 'Личные и рабочие деньги' : title} subtitle={subtitle} onClose={close}><form onSubmit={e => { e.preventDefault(); setError(''); try { const value = amountFromInput(amount); if (commit(s => appendEntry(s, { id: commandId.current, kind, amount: value, accountId: account, targetAccountId: kind === 'transfer' ? target : undefined, personId: personNeeded ? personId : undefined, carId: route.carId, date: DEMO_DAY, label: `${title}${personNeeded ? ` · ${state.people.find(p => p.id === personId)?.name}` : ''}` }), `${title}: ${money(value)} — записано`)) close(); } catch (err) { setError(messageOf(err)); } }}>
@@ -159,16 +167,84 @@ function PersonForm() {
 }
 
 function ReconcileForm({ id }: { id: string }) {
-  const { state, commit, close, open } = useApp(); const commandId = useRef(uid()); const account = state.accounts.find(a => a.id === id)!; const balance = accountBalance(state, id);
-  const [actual, setActual] = useState(''), [personal, setPersonal] = useState(String(balance.personal / 100)), [error, setError] = useState(''), [saved, setSaved] = useState(false);
-  let physical: number | null = null, own: number | null = null; try { if (actual) physical = amountFromInput(actual); own = amountFromInput(personal || '0'); } catch { /* form incomplete */ }
-  const difference = physical === null ? null : physical - balance.total;
-  return <Modal title="Сверить остаток" subtitle={account.name} onClose={close}><div className="detail-finances"><StatLine label="Всего по учёту" value={money(balance.total)} /><StatLine label="Из них личные" value={money(balance.personal)} /><StatLine label="Рабочая часть" value={money(balance.business)} strong /></div><form onSubmit={e => { e.preventDefault(); setError(''); try { const fact = amountFromInput(actual), personalFact = amountFromInput(personal || '0'); if (personalFact > fact) throw new Error('Личная часть не может превышать весь фактический остаток.'); if (commit(s => ({ ...s, reconciliations: [...s.reconciliations.filter(r => r.id !== commandId.current), { id: commandId.current, accountId: id, actual: fact, personal: personalFact, expected: balance.total, expectedPersonal: balance.personal, at: new Date().toISOString() }] }), 'Сверка сохранена. Учётный остаток автоматически не изменён.')) setSaved(true); } catch (err) { setError(messageOf(err)); } }}><div className="two-fields"><Field label={account.kind === 'cash' ? 'Пересчитали всего, ₽' : 'Фактически на карте, ₽'}><input inputMode="decimal" value={actual} onChange={e => { setActual(e.target.value); setSaved(false); }} placeholder="Введите факт" required /></Field><Field label="Из них личных, ₽"><input inputMode="decimal" value={personal} onChange={e => { setPersonal(e.target.value); setSaved(false); }} /></Field></div>{difference !== null && <div className={`reconciliation-result ${difference === 0 && own === balance.personal ? 'matched' : ''}`}><span>{difference === 0 && own === balance.personal ? 'Остаток и личная часть совпадают' : 'Расхождение по всему остатку'}</span><strong>{difference > 0 ? '+' : ''}{money(difference)}</strong>{own !== balance.personal && own !== null && <p>Личная часть отличается на {money(own - balance.personal)}. Её нужно уточнить отдельной записью.</p>}</div>}<Notice tone={difference === 0 && own === balance.personal ? 'green' : 'amber'}>Сверка сохраняет измерение. Она не переписывает деньги и не создаёт расход на машину автоматически.</Notice><ErrorMessage error={error} /><button className="button primary full" disabled={saved} type="submit">{saved ? 'Сверка сохранена' : 'Сохранить сверку'}<Check size={17} /></button></form>{saved && difference !== null && difference < 0 && <button className="button secondary full" onClick={() => open({ type: 'expense', amount: String(-difference / 100), accountId: id, text: 'Невыясненная выплата при сверке' })}>Записать разницу как неразобранную выплату<ArrowRight size={17} /></button>}{saved && difference !== null && difference > 0 && <Notice>Для излишка сначала нужно выяснить источник: поступление покупателя, капитал, собственные деньги или неверная прежняя запись. Автоматическое зачисление здесь не выполняется.</Notice>}</Modal>;
+  const { state, commit, close, open } = useApp();
+  const commandId = useRef(uid()); const account = state.accounts.find(a => a.id === id)!; const balance = accountBalance(state, id);
+  const [actual, setActual] = useState(''), [error, setError] = useState(''), [saved, setSaved] = useState(false);
+  let fact: number | null = null; try { if (actual) fact = amountFromInput(actual); } catch { /* form incomplete */ }
+  const difference = fact === null ? null : fact - balance.business;
+  return <Modal title="Сверить деньги на машины" subtitle={account.name} onClose={close}>
+    <div className="detail-finances"><StatLine label="На машины по учёту" value={money(balance.business)} strong /></div>
+    <Notice>Укажи только деньги на машины. Весь баланс карты и личные деньги сюда не входят. Если не знаешь, какая часть на машины, сначала нужно её выяснить.</Notice>
+    <form onSubmit={e => {
+      e.preventDefault(); setError('');
+      try {
+        const measured = amountFromInput(actual);
+        if (commit(s => ({ ...s, reconciliations: [...s.reconciliations.filter(r => r.id !== commandId.current), { id: commandId.current, accountId: id, actual: measured, personal: 0, expected: balance.business, expectedPersonal: 0, basis: 'business', at: new Date().toISOString() }] }), 'Сверка сохранена. Учётный остаток автоматически не изменён.')) setSaved(true);
+      } catch (err) { setError(messageOf(err)); }
+    }}>
+      <Field label="Фактически денег на машины, ₽"><input inputMode="decimal" value={actual} onChange={e => { setActual(e.target.value); setSaved(false); }} placeholder="Введите сумму" required /></Field>
+      {difference !== null && <div className={`reconciliation-result ${difference === 0 ? 'matched' : ''}`}><span>{difference === 0 ? 'Деньги на машины совпадают с учётом' : 'Разница по деньгам на машины'}</span><strong>{difference > 0 ? '+' : ''}{money(difference)}</strong></div>}
+      <Notice tone={difference === 0 ? 'green' : 'amber'}>Сверка сохраняет результат проверки. Она не меняет остаток и не создаёт расход автоматически.</Notice>
+      <ErrorMessage error={error} /><button className="button primary full" disabled={saved} type="submit">{saved ? 'Сверка сохранена' : 'Сохранить сверку'}<Check size={17} /></button>
+    </form>
+    {saved && difference !== null && difference < 0 && <button className="button secondary full" onClick={() => open({ type: 'expense', amount: String(-difference / 100), accountId: id, text: 'Невыясненная выплата при сверке' })}>Записать разницу как неразобранную выплату<ArrowRight size={17} /></button>}
+    {saved && difference !== null && difference > 0 && <Notice>Сначала нужно выяснить источник излишка. Автоматическое зачисление не выполняется.</Notice>}
+  </Modal>;
+}
+
+function OwnerReturnForm({ expenseId }: { expenseId: string }) {
+  const { state, commit, close } = useApp(); const commandId = useRef(uid());
+  const expense = state.entries.find(e => e.id === expenseId)!; const remaining = personalExpenseDue(state, expenseId);
+  const [amount, setAmount] = useState(String(remaining / 100)); const [accountId, setAccountId] = useState('pocket');
+  const [date, setDate] = useState(DEMO_DAY); const [error, setError] = useState('');
+  let negative = false; try { negative = amountFromInput(amount) > accountBalance(state, accountId).business; } catch { /* form incomplete */ }
+  return <Modal title={expense.personalUse === 'invest' ? 'Забрать свои вложения' : 'Вернуть себе'} subtitle={expense.label} onClose={close}>
+    <div className="detail-finances"><StatLine label="Осталось ваших денег" value={money(remaining)} strong /></div>
+    <form onSubmit={e => {
+      e.preventDefault(); setError('');
+      try {
+        if (commit(s => appendEntry(s, { id: commandId.current, kind: 'owner_repayment', amount: amountFromInput(amount), accountId, originalId: expenseId, date, label: `Вернул себе · ${expense.label}` }), 'Возврат своих денег записан. Себестоимость и прибыль не изменились.')) close();
+      } catch (err) { setError(messageOf(err)); }
+    }}>
+      <Field label="Сколько вернул себе, ₽"><input className="amount-input" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} required /></Field>
+      <Field label="Откуда взял деньги"><AccountSelect value={accountId} onChange={setAccountId} /></Field>
+      <Field label="Дата"><input type="date" value={date} onChange={e => setDate(e.target.value)} required /></Field>
+      <Notice>Записывай после фактического возврата. Деньги на машины уменьшатся; второго расхода и новой прибыли не будет.</Notice>
+      {negative && <Notice tone="amber">Сумма больше учтённых денег в выбранном месте. Если возврат уже был, запись можно сохранить; источник денег затем нужно проверить.</Notice>}
+      <ErrorMessage error={error} /><button className="button primary full" type="submit">Записать возврат<Check size={17} /></button>
+    </form>
+  </Modal>;
 }
 
 function EntryDetail({ id }: { id: string }) {
-  const { state, open, close, commit } = useApp(); const raw = state.entries.find(e => e.id === id)!; const entry = classifiedEntry(state, raw); const [confirmUndo, setConfirmUndo] = useState(false); const commandId = useRef(uid());
-  return <Modal title="Детали операции" subtitle={entry.label} onClose={close}><div className="operation-amount">{money(entry.amount)}</div><div className="detail-finances"><StatLine label="Дата события" value={new Date(`${entry.date}T12:00:00`).toLocaleDateString('ru-RU')} /><StatLine label="Счёт" value={state.accounts.find(a => a.id === entry.accountId)?.name} />{entry.carId && <StatLine label="Автомобиль" value={state.cars.find(c => c.id === entry.carId)?.nickname} />}{entry.category && <StatLine label="Категория" value={entry.category} />}{entry.kind === 'expense' && <StatLine label="Назначение" value={entry.scope === 'unknown' ? 'Не выяснено' : entry.scope === 'car' ? 'На автомобиль' : 'Общие нужды бизнеса'} />}</div>{entry.kind === 'expense' && !isReversed(state, id) && <><button className="button primary full" onClick={() => open({ type: 'expense', entryId: id })}>Уточнить назначение<ArrowRight size={16} /></button>{!confirmUndo ? <button className="text-button danger full-center" onClick={() => setConfirmUndo(true)}>Отменить ошибочную запись</button> : <div className="undo-confirm"><Notice tone="amber">Это исправление ошибочной записи: учётное списание будет отменено. Если деньги действительно вернул продавец, нужен отдельный сценарий возврата, который пока не реализован.</Notice><button className="button secondary full" onClick={() => { if (commit(s => appendEntry(s, { id: commandId.current, kind: 'expense_reversal', amount: entry.amount, accountId: entry.accountId, originalId: id, date: DEMO_DAY, label: `Отмена записи · ${entry.label}` }), 'Ошибочная запись отменена. История сохранена.')) close(); }}><RotateCcw size={17} />Подтвердить отмену записи</button></div>}</>}{isReversed(state, id) && <Notice>Запись отменена связанной корректировкой. Исходная запись сохранена в истории.</Notice>}{state.classifications.some(c => c.entryId === id) && <Notice>Назначение уточнялось {state.classifications.filter(c => c.entryId === id).length} раз. Исходное денежное движение осталось одним.</Notice>}<p className="technical-id">Идентификатор записи · {id}</p></Modal>;
+  const { state, open, close, commit } = useApp(); const raw = state.entries.find(e => e.id === id)!; const entry = classifiedEntry(state, raw);
+  const [confirmUndo, setConfirmUndo] = useState(false); const commandId = useRef(uid());
+  const ownExpense = entry.kind === 'expense' && entry.funding === 'personal';
+  const due = ownExpense ? personalExpenseDue(state, id) : 0;
+  const repaid = ownExpense ? state.entries.filter(e => e.kind === 'owner_repayment' && e.originalId === id).reduce((sum, e) => sum + e.amount, 0) : 0;
+  return <Modal title="Детали операции" subtitle={entry.label} onClose={close}>
+    <div className="operation-amount">{money(entry.amount)}</div>
+    <div className="detail-finances">
+      <StatLine label="Дата события" value={new Date(`${entry.date}T12:00:00`).toLocaleDateString('ru-RU')} />
+      <StatLine label={ownExpense ? 'Чем заплатил' : 'Где учтены деньги'} value={state.accounts.find(a => a.id === entry.accountId)?.name} />
+      {entry.carId && <StatLine label="Автомобиль" value={state.cars.find(c => c.id === entry.carId)?.nickname} />}
+      {entry.category && <StatLine label="Категория" value={entry.category} />}
+      {entry.kind === 'expense' && <><StatLine label="Назначение" value={entry.scope === 'unknown' ? 'Не выяснено' : entry.scope === 'car' ? 'На автомобиль' : 'Общие нужды бизнеса'} /><StatLine label="Чьи деньги" value={ownExpense ? 'Оплатил своими' : 'Из денег на машины'} /></>}
+      {ownExpense && <><StatLine label="Выбранный вариант" value={entry.personalUse === 'invest' ? 'Оставить в деле' : 'Вернуть мне'} /><StatLine label="Уже вернул себе" value={money(repaid)} /><StatLine label={entry.personalUse === 'invest' ? 'Осталось своих вложений' : 'Осталось вернуть себе'} value={money(due)} strong /></>}
+    </div>
+    {entry.kind === 'owner_repayment' && <Notice>Это возврат ранее потраченных своих денег. Себестоимость и прибыль не изменились.</Notice>}
+    {ownExpense && due > 0 && <button className="button primary full" onClick={() => open({ type: 'owner-return', expenseId: id })}>{entry.personalUse === 'invest' ? 'Забрать свои вложения' : 'Вернуть себе'}<ArrowRight size={16} /></button>}
+    {entry.kind === 'expense' && !isReversed(state, id) && <>
+      <button className="button secondary full" onClick={() => open({ type: 'expense', entryId: id })}>Уточнить назначение<ArrowRight size={16} /></button>
+      {repaid > 0 ? <Notice>По этому расходу уже возвращали деньги. Исправление связанных записей пока не поддерживается.</Notice> : !confirmUndo ? <button className="text-button danger full-center" onClick={() => setConfirmUndo(true)}>Отменить ошибочную запись</button> : <div className="undo-confirm">
+        <Notice tone="amber">Это исправление ошибочной записи. {ownExpense ? 'Расход и остаток своих денег будут отменены; деньги на машины не изменятся.' : 'Учётное списание будет отменено.'} Возврат реальных денег продавцом оформляется отдельно и пока не поддерживается.</Notice>
+        <button className="button secondary full" onClick={() => { if (commit(s => appendEntry(s, { id: commandId.current, kind: 'expense_reversal', amount: entry.amount, accountId: entry.accountId, originalId: id, date: DEMO_DAY, label: `Отмена записи · ${entry.label}` }), 'Ошибочная запись отменена. История сохранена.')) close(); }}><RotateCcw size={17} />Подтвердить отмену записи</button>
+      </div>}
+    </>}
+    {isReversed(state, id) && <Notice>Запись отменена связанной корректировкой. Исходная запись сохранена в истории.</Notice>}
+    {state.classifications.some(c => c.entryId === id) && <Notice>Назначение уточнялось {state.classifications.filter(c => c.entryId === id).length} раз. Повторной оплаты не было.</Notice>}
+    <p className="technical-id">Идентификатор записи · {id}</p>
+  </Modal>;
 }
 
 function BotForm() {
